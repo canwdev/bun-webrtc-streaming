@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>观看端 - WebRTC 直播</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #0f0f14;
+      color: #e4e4e7;
+      margin: 0;
+      padding: 1rem;
+      min-height: 100vh;
+    }
+    h1 { font-size: 1.25rem; margin-bottom: 1rem; }
+    .remote {
+      width: 100%;
+      max-width: 100%;
+      min-height: 240px;
+      background: #1a1a24;
+      border-radius: 8px;
+      object-fit: contain;
+      display: block;
+      margin-bottom: 0.5rem;
+    }
+    .resolution { font-size: 0.8rem; color: #71717a; margin-bottom: 1rem; }
+    .status { font-size: 0.85rem; color: #a1a1aa; }
+    .status.live { color: #22c55e; }
+    .status.err { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <h1>观看端</h1>
+  <video id="remote" class="remote" autoplay playsinline muted></video>
+  <div id="resolution" class="resolution"></div>
+  <div id="status" class="status">正在连接… 请先在另一标签页打开「推流端」并开始推流。刷新本页后会自动重连并显示画面。</div>
+
+  <script>
+    const remote = document.getElementById("remote");
+    const statusEl = document.getElementById("status");
+    const resolutionEl = document.getElementById("resolution");
+
+    function updateResolution() {
+      if (remote.videoWidth && remote.videoHeight) resolutionEl.textContent = "接收分辨率: " + remote.videoWidth + "×" + remote.videoHeight;
+      else resolutionEl.textContent = "";
+    }
+
+    const wsScheme = location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${wsScheme}//${location.host}`;
+
+    let pc = null;
+    let otherPeerId = null;
+
+    function setStatus(text, type = "") {
+      statusEl.textContent = text;
+      statusEl.className = "status " + type;
+    }
+
+    const ws = new WebSocket(wsUrl);
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ role: "viewer" }));
+      setStatus("已连接信令服务器，等待推流端…");
+    };
+    ws.onerror = () => setStatus("WebSocket 连接失败", "err");
+    ws.onclose = () => setStatus("与服务器断开", "err");
+
+    ws.onmessage = async (ev) => {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === "offer" && msg.sdp) {
+        otherPeerId = msg.from;
+        try {
+          if (pc) pc.close();
+          const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+          pc = new RTCPeerConnection(config);
+
+          const attachStream = (streamOrTrack) => {
+            if (streamOrTrack instanceof MediaStream) {
+              remote.srcObject = streamOrTrack;
+            } else if (streamOrTrack && streamOrTrack.kind === "video") {
+              const s = new MediaStream();
+              s.addTrack(streamOrTrack);
+              remote.srcObject = s;
+            }
+            remote.play().catch(() => {});
+            setStatus("正在播放（低延迟）", "live");
+            remote.onloadedmetadata = () => updateResolution();
+            remote.onresize = () => updateResolution();
+          };
+
+          pc.ontrack = (e) => {
+            if (e.streams && e.streams[0]) attachStream(e.streams[0]);
+            else if (e.track) attachStream(e.track);
+          };
+          pc.onconnectionstatechange = () => {
+            if (pc.connectionState === "connected") {
+              setStatus("已连接，正在播放", "live");
+              if (!remote.srcObject) {
+                const recv = pc.getReceivers().find((r) => r.track && r.track.kind === "video");
+                if (recv?.track) attachStream(recv.track);
+              }
+            } else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") setStatus("连接断开", "err");
+          };
+          pc.onicecandidate = (e) => {
+            if (e.candidate && otherPeerId) ws.send(JSON.stringify({ type: "ice", candidate: e.candidate.toJSON(), to: otherPeerId }));
+          };
+
+          const sdp = typeof msg.sdp === "string" ? msg.sdp : msg.sdp?.sdp;
+          await pc.setRemoteDescription(new RTCSessionDescription({ type: msg.type, sdp }));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          ws.send(JSON.stringify({ type: pc.localDescription.type, sdp: pc.localDescription.sdp, to: otherPeerId }));
+        } catch (e) {
+          setStatus("连接失败: " + e.message, "err");
+        }
+      } else if (msg.type === "ice" && msg.candidate && pc) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+        } catch (_) {}
+      }
+    };
+  </script>
+</body>
+</html>

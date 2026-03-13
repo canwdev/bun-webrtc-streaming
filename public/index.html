@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WebRTC 摄像头直播</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: linear-gradient(135deg, #0f0f14 0%, #1a1a24 100%);
+      color: #e4e4e7;
+      min-height: 100vh;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    h1 { font-weight: 600; font-size: 1.75rem; margin-bottom: 0.5rem; }
+    p { color: #a1a1aa; margin-bottom: 2rem; }
+    nav { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+    a {
+      display: inline-block;
+      padding: 0.75rem 1.5rem;
+      background: #3b82f6;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 500;
+      transition: background .2s;
+    }
+    a:hover { background: #2563eb; }
+    a.viewer { background: #22c55e; }
+    a.viewer:hover { background: #16a34a; }
+  </style>
+</head>
+<body>
+  <h1>WebRTC 摄像头直播</h1>
+  <p>极低延迟（目标 &lt;100ms）· 网页调节分辨率/帧率 · 选择摄像头并启停</p>
+  <nav>
+    <a href="/broadcaster">推流端（主播）</a>
+    <a href="/viewer" class="viewer">观看端</a>
+  </nav>
+</body>
+</html>
