@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>推流端 - WebRTC 直播</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #0f0f14;
+      color: #e4e4e7;
+      margin: 0;
+      padding: 1rem;
+      min-height: 100vh;
+    }
+    h1 { font-size: 1.25rem; margin-bottom: 1rem; }
+    .preview {
+      width: 100%;
+      max-width: 640px;
+      aspect-ratio: 16/10;
+      background: #1a1a24;
+      border-radius: 8px;
+      object-fit: contain;
+      margin-bottom: 1rem;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      align-items: flex-end;
+      margin-bottom: 1rem;
+    }
+    .field { display: flex; flex-direction: column; gap: 0.25rem; }
+    .field label { font-size: 0.8rem; color: #a1a1aa; }
+    select {
+      padding: 0.5rem 0.75rem;
+      background: #27272a;
+      border: 1px solid #3f3f46;
+      border-radius: 6px;
+      color: #e4e4e7;
+      min-width: 160px;
+    }
+    button {
+      padding: 0.6rem 1.2rem;
+      border-radius: 6px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-start { background: #22c55e; color: #fff; }
+    .btn-start:hover { background: #16a34a; }
+    .btn-stop { background: #ef4444; color: #fff; }
+    .btn-stop:hover { background: #dc2626; }
+    .btn-stop:disabled, .btn-start:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status { font-size: 0.85rem; color: #a1a1aa; margin-top: 0.5rem; }
+    .status.live { color: #22c55e; }
+    .status.err { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <h1>推流端（主播）</h1>
+  <video id="preview" class="preview" muted playsinline autoplay></video>
+  <div class="controls">
+    <div class="field">
+      <label>摄像头</label>
+      <select id="camera"></select>
+    </div>
+    <div class="field">
+      <label>分辨率</label>
+      <select id="resolution">
+        <option value="320,240">320×240</option>
+        <option value="640,480" selected>640×480</option>
+        <option value="1280,720">1280×720</option>
+        <option value="1920,1080">1920×1080</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>帧率 (fps)</label>
+      <select id="fps">
+        <option value="15">15</option>
+        <option value="24">24</option>
+        <option value="30" selected>30</option>
+        <option value="60">60</option>
+      </select>
+    </div>
+    <button id="btnStart" class="btn-start">开始推流</button>
+    <button id="btnStop" class="btn-stop" disabled>停止推流</button>
+  </div>
+  <div id="status" class="status">选择摄像头与参数后点击「开始推流」。在另一标签页打开「观看端」接收画面。</div>
+
+  <script>
+    const preview = document.getElementById("preview");
+    const cameraSelect = document.getElementById("camera");
+    const resolutionSelect = document.getElementById("resolution");
+    const fpsSelect = document.getElementById("fps");
+    const btnStart = document.getElementById("btnStart");
+    const btnStop = document.getElementById("btnStop");
+    const statusEl = document.getElementById("status");
+
+    let stream = null;
+    let pc = null;
+    let ws = null;
+    let otherPeerId = null;
+    const iceBuffer = [];
+
+    const wsScheme = location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${wsScheme}//${location.host}`;
+
+    function setStatus(text, type = "") {
+      statusEl.textContent = text;
+      statusEl.className = "status " + type;
+    }
+
+    async function loadCameras() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videos = devices.filter((d) => d.kind === "videoinput");
+        cameraSelect.innerHTML = videos.map((d) => `<option value="${d.deviceId}">${d.label || "摄像头 " + (cameraSelect.length + 1)}</option>`).join("");
+      } catch (e) {
+        setStatus("无法枚举摄像头: " + e.message, "err");
+      }
+    }
+
+    function getConstraints() {
+      const [w, h] = resolutionSelect.value.split(",").map(Number);
+      const fps = parseInt(fpsSelect.value, 10);
+      return {
+        video: {
+          deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined,
+          width: { ideal: w },
+          height: { ideal: h },
+          frameRate: { ideal: fps },
+        },
+        audio: false,
+      };
+    }
+
+    async function setSenderBitrate(pc, resolutionValue) {
+      const [w, h] = resolutionValue.split(",").map(Number);
+      const pixels = w * h;
+      const maxBitrate = pixels >= 1920 * 1080 ? 5000000 : pixels >= 1280 * 720 ? 2500000 : pixels >= 640 * 480 ? 1200000 : 400000;
+      for (const sender of pc.getSenders()) {
+        if (sender.track?.kind !== "video") continue;
+        try {
+          const params = sender.getParameters();
+          if (!params.encodings?.length) params.encodings = [{}];
+          params.encodings[0].maxBitrate = maxBitrate;
+          await sender.setParameters(params);
+        } catch (_) {}
+      }
+    }
+
+    function connectWs() {
+      return new Promise((resolve, reject) => {
+        const w = new WebSocket(wsUrl);
+        w.onopen = () => {
+          w.send(JSON.stringify({ role: "broadcaster" }));
+          resolve(w);
+        };
+        w.onerror = () => reject(new Error("WebSocket 连接失败"));
+        w.onclose = () => reject(new Error("WebSocket 已关闭"));
+      });
+    }
+
+    async function startBroadcast() {
+      iceBuffer.length = 0;
+      try {
+        setStatus("正在获取摄像头…");
+        stream = await navigator.mediaDevices.getUserMedia(getConstraints());
+        preview.srcObject = stream;
+        setStatus("正在连接信令服务器…");
+        ws = await connectWs();
+
+        ws.onmessage = async (ev) => {
+          const msg = JSON.parse(ev.data);
+          if (msg.role === "viewer" && stream && pc) {
+            await sendOfferToViewer(msg.from);
+            return;
+          }
+          if (msg.from) {
+            otherPeerId = msg.from;
+            while (iceBuffer.length) ws.send(JSON.stringify({ type: "ice", candidate: iceBuffer.shift(), to: otherPeerId }));
+          }
+          if (msg.type === "answer" && msg.sdp) {
+            const sdp = typeof msg.sdp === "string" ? msg.sdp : msg.sdp?.sdp;
+            await pc.setRemoteDescription(new RTCSessionDescription({ type: msg.type, sdp }));
+          } else if (msg.type === "ice" && msg.candidate) {
+            await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+          }
+        };
+
+        const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+
+        async function sendOfferToViewer(viewerId) {
+          if (pc) {
+            pc.close();
+            pc = null;
+          }
+          iceBuffer.length = 0;
+          otherPeerId = viewerId;
+          pc = new RTCPeerConnection(config);
+          pc.onicecandidate = (e) => {
+            if (!e.candidate) return;
+            const payload = { type: "ice", candidate: e.candidate.toJSON(), to: otherPeerId };
+            if (otherPeerId) ws.send(JSON.stringify(payload));
+            else iceBuffer.push(e.candidate.toJSON());
+          };
+          pc.onconnectionstatechange = () => {
+            if (pc.connectionState === "connected") setStatus("已连接观看端，正在推流", "live");
+            else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") setStatus("连接断开", "err");
+          };
+          stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          await setSenderBitrate(pc, resolutionSelect.value);
+          ws.send(JSON.stringify({ type: pc.localDescription.type, sdp: pc.localDescription.sdp, to: viewerId }));
+          setStatus("已向观看端发送画面，等待连接…");
+        }
+
+        pc = new RTCPeerConnection(config);
+
+        pc.onicecandidate = (e) => {
+          if (!e.candidate) return;
+          const payload = { type: "ice", candidate: e.candidate.toJSON(), to: otherPeerId };
+          if (otherPeerId) ws.send(JSON.stringify(payload));
+          else iceBuffer.push(e.candidate.toJSON());
+        };
+        pc.onconnectionstatechange = () => {
+          if (pc.connectionState === "connected") setStatus("已连接观看端，正在推流", "live");
+          else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") setStatus("连接断开", "err");
+        };
+
+        stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        await setSenderBitrate(pc, resolutionSelect.value);
+        ws.send(JSON.stringify({ type: pc.localDescription.type, sdp: pc.localDescription.sdp }));
+        otherPeerId = null;
+        setStatus("等待观看端连接…");
+        btnStart.disabled = true;
+        btnStop.disabled = false;
+      } catch (e) {
+        setStatus("推流失败: " + e.message, "err");
+        stopBroadcast();
+      }
+    }
+
+    function stopBroadcast() {
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
+        stream = null;
+      }
+      if (pc) {
+        pc.close();
+        pc = null;
+      }
+      if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+      ws = null;
+      otherPeerId = null;
+      iceBuffer.length = 0;
+      preview.srcObject = null;
+      btnStart.disabled = false;
+      btnStop.disabled = true;
+      setStatus("已停止推流。");
+    }
+
+    btnStart.addEventListener("click", startBroadcast);
+    btnStop.addEventListener("click", stopBroadcast);
+
+    loadCameras();
+  </script>
+</body>
+</html>
