@@ -25,7 +25,6 @@
         width: 100vw;
         height: 100vh;
         background: #1a1a24;
-        border-radius: 8px;
         object-fit: contain;
         display: block;
       }
@@ -133,7 +132,7 @@
                 remote.srcObject = s;
               }
               remote.play().catch(() => {});
-              setStatus("正在播放（低延迟）", "live");
+              setStatus("正在播放", "live");
               remote.onloadedmetadata = () => updateResolution();
               remote.onresize = () => updateResolution();
             };
