@@ -1,5 +1,5 @@
 {
-  "name": "node-webrtc-streaming",
+  "name": "bun-webrtc-streaming",
   "version": "1.0.0",
   "description": "WebRTC webcam streaming with ultra-low latency",
   "type": "module",
@@ -7,6 +7,11 @@
     "start": "bun run server.js",
     "dev": "bun run --hot server.js"
   },
-  "keywords": ["webrtc", "webcam", "streaming", "low-latency"],
+  "keywords": [
+    "webrtc",
+    "webcam",
+    "streaming",
+    "low-latency"
+  ],
   "license": "MIT"
 }

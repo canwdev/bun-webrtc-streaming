@@ -1,6 +1,6 @@
 # WebRTC 摄像头直播
 
-使用 Node.js（Bun）+ WebRTC + 原生 HTML5 实现的 WebCam 低延迟直播。
+使用 Bun + WebRTC + 原生 HTML5 实现的 WebCam 低延迟直播。
 
 ## 功能
 

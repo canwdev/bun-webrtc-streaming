@@ -16,7 +16,7 @@ function broadcast(fromId, message) {
 }
 
 const server = Bun.serve({
-  port: process.env.PORT || 3000,
+  port: process.env.PORT || 3661,
   async fetch(req, server) {
     if (server.upgrade(req)) return undefined;
     const url = new URL(req.url);
