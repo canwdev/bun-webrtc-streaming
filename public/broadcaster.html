@@ -25,7 +25,6 @@
         max-width: 1200px;
         aspect-ratio: 16/10;
         background: #1a1a24;
-        border-radius: 8px;
         object-fit: contain;
         margin-bottom: 1rem;
       }
@@ -240,7 +239,9 @@
           ws = await connectWs();
 
           const config = {
-            iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+            iceServers: [
+              /* { urls: "stun:stun.l.google.com:19302" } */
+            ],
           };
 
           async function sendOfferToViewer(viewerId) {
@@ -263,11 +264,25 @@
               ws.send(JSON.stringify(payload));
             };
             pc.onconnectionstatechange = () => {
-              if (pc.connectionState === "connected" || pc.connectionState === "disconnected" || pc.connectionState === "failed") {
-                const n = [...peerConnections.values()].filter((p) => p.pc.connectionState === "connected").length;
-                setStatus(n > 0 ? "已连接 " + n + " 个观看端，正在推流" : "等待观看端连接…", n > 0 ? "live" : "");
+              if (
+                pc.connectionState === "connected" ||
+                pc.connectionState === "disconnected" ||
+                pc.connectionState === "failed"
+              ) {
+                const n = [...peerConnections.values()].filter(
+                  (p) => p.pc.connectionState === "connected",
+                ).length;
+                setStatus(
+                  n > 0
+                    ? "已连接 " + n + " 个观看端，正在推流"
+                    : "等待观看端连接…",
+                  n > 0 ? "live" : "",
+                );
               }
-              if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+              if (
+                pc.connectionState === "failed" ||
+                pc.connectionState === "disconnected"
+              ) {
                 pc.close();
                 peerConnections.delete(viewerId);
               }
@@ -285,7 +300,10 @@
               }),
             );
             const n = peerConnections.size;
-            setStatus(n > 0 ? "已向 " + n + " 个观看端发送画面" : "等待观看端连接…", "live");
+            setStatus(
+              n > 0 ? "已向 " + n + " 个观看端发送画面" : "等待观看端连接…",
+              "live",
+            );
           }
 
           ws.onmessage = async (ev) => {
