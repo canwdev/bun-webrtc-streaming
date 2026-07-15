@@ -1,0 +1,22 @@
+{
+  "name": "webrtc-server-go",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "air",
+    "copy:frontend": "node -e \"var f=require('fs');f.cpSync('../public','public',{recursive:true})\"",
+    "build": "cross-env bun run copy:frontend && go build -trimpath -ldflags=\"-s -w\" -o bin/webrtc-server",
+    "build:win:amd64": "cross-env GOOS=windows GOARCH=amd64 bun run build -- -o bin/windows_amd64/webrtc-server.exe",
+    "build:win:arm64": "cross-env GOOS=windows GOARCH=arm64 bun run build -- -o bin/windows_arm64/webrtc-server.exe",
+    "build:linux:amd64": "cross-env GOOS=linux GOARCH=amd64 bun run build -- -o bin/linux_amd64/webrtc-server",
+    "build:linux:arm64": "cross-env GOOS=linux GOARCH=arm64 bun run build -- -o bin/linux_arm64/webrtc-server",
+    "build:mac:amd64": "cross-env GOOS=darwin GOARCH=amd64 bun run build -- -o bin/mac_amd64/webrtc-server",
+    "build:mac:arm64": "cross-env GOOS=darwin GOARCH=arm64 bun run build -- -o bin/mac_arm64/webrtc-server",
+    "build:all": "bun run clean && bun run build:win:amd64 && bun run build:win:arm64 && bun run build:linux:amd64 && bun run build:linux:arm64 && bun run build:mac:amd64 && bun run build:mac:arm64",
+    "clean": "rimraf bin"
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "rimraf": "^6.1.2"
+  }
+}

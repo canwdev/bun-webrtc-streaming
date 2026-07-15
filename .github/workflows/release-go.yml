@@ -1,0 +1,53 @@
+name: Release Go
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+
+      - name: Copy frontend
+        run: cp -r public go/public
+
+      - name: Build all platforms
+        run: |
+          mkdir -p bin/windows_amd64 bin/windows_arm64 bin/linux_amd64 bin/linux_arm64 bin/mac_amd64 bin/mac_arm64
+          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o bin/windows_amd64/webrtc-server.exe .
+          GOOS=windows GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o bin/windows_arm64/webrtc-server.exe .
+          GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o bin/linux_amd64/webrtc-server .
+          GOOS=linux   GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o bin/linux_arm64/webrtc-server .
+          GOOS=darwin  GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o bin/mac_amd64/webrtc-server .
+          GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o bin/mac_arm64/webrtc-server .
+        working-directory: go
+
+      - name: Package artifacts
+        run: |
+          for dir in bin/*/; do
+            name=$(basename "$dir")
+            zip -j "webrtc-server-${name}.zip" "$dir"/*
+          done
+        working-directory: go
+
+      - name: Create pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: preview
+          prerelease: true
+          name: "Preview Build"
+          body: |
+            Auto-built from `master` branch.
+
+            Commit: [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+          files: go/webrtc-server-*.zip

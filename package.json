@@ -4,8 +4,8 @@
   "description": "WebRTC webcam streaming with ultra-low latency",
   "type": "module",
   "scripts": {
-    "start": "bun run server.js",
-    "dev": "bun run --hot server.js"
+    "start": "cd nodejs && bun run server.js",
+    "dev": "cd nodejs && bun run --hot server.js"
   },
   "keywords": [
     "webrtc",

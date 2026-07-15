@@ -2,7 +2,7 @@
  * WebRTC 信令服务器 (Bun)
  * 提供静态页面 + WebSocket 信令，用于交换 SDP/ICE
  */
-const STATIC_DIR = "./public";
+const STATIC_DIR = "../public";
 
 const clients = new Map(); // id -> { role: 'broadcaster'|'viewer', ws }
 
